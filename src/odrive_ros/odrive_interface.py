@@ -29,7 +29,7 @@ class ODriveInterfaceAPI(object):
     right_axis = None
     left_axis = None
     connected = False
-    _prerolled = False
+    _prerolled = True #False
     #engaged = False
     
     def __init__(self, logger=None):

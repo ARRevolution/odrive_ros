@@ -54,9 +54,10 @@ class ODriveNode(object):
     wheel_track = None
     tyre_circumference = None
     encoder_counts_per_rev = None
-    m_s_to_value = 1.0
+    m_s_to_value = 4.65 #1.0
     axis_for_right = 0
-    encoder_cpr = 4096
+    encoder_cpr = 36 #4096 # still need to take gears into account. *9?!
+    gear_ratio = 4.21 # 
     
     # Startup parameters
     connect_on_startup = False
@@ -73,7 +74,7 @@ class ODriveNode(object):
         #self.calibrate_on_startup = rospy.get_param('~calibrate_on_startup', False)
         #self.engage_on_startup    = rospy.get_param('~engage_on_startup', False)
         
-        self.has_preroll     = rospy.get_param('~use_preroll', True)
+        self.has_preroll     = rospy.get_param('~use_preroll', False) # True
                 
         self.publish_current = rospy.get_param('~publish_current', True)
         self.publish_raw_odom =rospy.get_param('~publish_raw_odom', True)
@@ -376,9 +377,9 @@ class ODriveNode(object):
     
     def convert(self, forward, ccw):
         angular_to_linear = ccw * (self.wheel_track/2.0) 
-        left_linear_val  = int((forward - angular_to_linear) * self.m_s_to_value)
-        right_linear_val = int((forward + angular_to_linear) * self.m_s_to_value)
-    
+        left_linear_val  = int((forward - angular_to_linear) * self.m_s_to_value * self.gear_ratio)
+        right_linear_val = int((forward + angular_to_linear) * self.m_s_to_value * self.gear_ratio)
+	
         return left_linear_val, right_linear_val
 
     def cmd_vel_callback(self, msg):
@@ -397,7 +398,7 @@ class ODriveNode(object):
         #left_linear_rpm  = (msg.linear.x - angular_to_linear) * m_s_to_erpm
         #right_linear_rpm = (msg.linear.x + angular_to_linear) * m_s_to_erpm
         left_linear_val, right_linear_val = self.convert(msg.linear.x, msg.angular.z)
-        
+		
         # if wheel speed = 0, stop publishing after sending 0 once. #TODO add error term, work out why VESC turns on for 0 rpm
         
         # Then set your wheel speeds (using wheel_left and wheel_right as examples)
@@ -437,7 +438,7 @@ class ODriveNode(object):
         
         wheel_track = self.wheel_track   # check these. Values in m
         tyre_circumference = self.tyre_circumference
-        # self.m_s_to_value = encoder_cpr/tyre_circumference set earlier
+        self.m_s_to_value = self.encoder_cpr/tyre_circumference  #set earlier
     
         # Twist/velocity: calculated from motor values only
         s = tyre_circumference * (self.vel_l+self.vel_r) / (2.0*self.encoder_cpr)
