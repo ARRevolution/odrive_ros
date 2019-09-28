@@ -80,7 +80,7 @@ class ODriveNode(object):
         self.publish_raw_odom =rospy.get_param('~publish_raw_odom', True)
         
         self.publish_odom    = rospy.get_param('~publish_odom', True)
-        self.publish_tf      = rospy.get_param('~publish_odom_tf', False)
+        self.publish_tf      = rospy.get_param('~publish_odom_tf', True)
         self.odom_topic      = rospy.get_param('~odom_topic', "odom")
         self.odom_frame      = rospy.get_param('~odom_frame', "odom")
         self.base_frame      = rospy.get_param('~base_frame', "base_link")
