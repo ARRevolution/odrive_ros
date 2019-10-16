@@ -469,11 +469,11 @@ class ODriveNode(object):
 		#rospy.loginfo("m_s_to_value = " + str(self.m_s_to_value))
         
         # Check for overflow. Assume we can't move more than half a circumference in a single timestep. 
-        half_cpr = self.encoder_cpr/2.0
-        if   delta_pos_l >  half_cpr: delta_pos_l = delta_pos_l - self.encoder_cpr
-        elif delta_pos_l < -half_cpr: delta_pos_l = delta_pos_l + self.encoder_cpr
-        if   delta_pos_r >  half_cpr: delta_pos_r = delta_pos_r - self.encoder_cpr
-        elif delta_pos_r < -half_cpr: delta_pos_r = delta_pos_r + self.encoder_cpr
+        half_cpr = self.wheel_cpr/2.0
+        if   delta_pos_l >  half_cpr: delta_pos_l = delta_pos_l - self.wheel_cpr
+        elif delta_pos_l < -half_cpr: delta_pos_l = delta_pos_l + self.wheel_cpr
+        if   delta_pos_r >  half_cpr: delta_pos_r = delta_pos_r - self.wheel_cpr
+        elif delta_pos_r < -half_cpr: delta_pos_r = delta_pos_r + self.wheel_cpr
         
         # counts to metres
         delta_pos_l_m = delta_pos_l / self.m_s_to_value
