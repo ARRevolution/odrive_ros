@@ -60,6 +60,7 @@ class ODriveNode(object):
     m_s_to_value = 141.509 #4.65 
     axis_for_right = 0
     encoder_cpr = 18 #4096 # still need to take gears into account. *9?!
+    wheel_cpr = 150 # Complete revolutons of the wheel
     #gear_ratio = 4.21 # 
     
     # Startup parameters
@@ -448,8 +449,8 @@ class ODriveNode(object):
         #self.m_s_to_value = self.encoder_cpr/tyre_circumference  #set earlier - Dale removed
     
         # Twist/velocity: calculated from motor values only
-        s = tyre_circumference * (self.vel_l+self.vel_r) / (2.0*self.encoder_cpr)
-        w = tyre_circumference * (self.vel_r-self.vel_l) / (wheel_track * self.encoder_cpr) # angle: vel_r*tyre_radius - vel_l*tyre_radius
+        s = tyre_circumference * (self.vel_l+self.vel_r) / (2.0*self.wheel_cpr) #encoder_cpr
+        w = tyre_circumference * (self.vel_r-self.vel_l) / (wheel_track * self.wheel_cpr) #encoder_cpr # angle: vel_r*tyre_radius - vel_l*tyre_radius
         self.odom_msg.twist.twist.linear.x = s
         self.odom_msg.twist.twist.angular.z = w
     
@@ -464,6 +465,8 @@ class ODriveNode(object):
         
         self.old_pos_l = self.new_pos_l
         self.old_pos_r = self.new_pos_r
+		
+		#rospy.loginfo("m_s_to_value = " + str(self.m_s_to_value))
         
         # Check for overflow. Assume we can't move more than half a circumference in a single timestep. 
         half_cpr = self.encoder_cpr/2.0
