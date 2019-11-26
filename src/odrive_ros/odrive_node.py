@@ -425,8 +425,8 @@ class ODriveNode(object):
         #below puts 0 rads as left. want it as verticle
         #steer_angle_rads = math.atan2(msg.linear.x, msg.angular.z)
         
-        #So if swap axis then rotates by 90. Might need to *-1 the result
-        steer_angle_rads = -1 * math.atan2(msg.angular.z, msg.linear.x)
+        #So if swap axis and *-1 then rotates by 90. Added 0.000001 so that 0,0 is 0 degrees instead of 180.
+        steer_angle_rads = -1 * math.atan2(msg.angular.z, msg.linear.x + 0.000001)
         rospy.loginfo("Steering Components: [%f, %f, %f, %f]"%(msg.linear.x, msg.angular.z, steer_angle_rads, self.steering_angle_pot))
 
 		#1200 counts = 180 degrees
