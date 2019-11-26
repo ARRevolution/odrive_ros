@@ -62,6 +62,7 @@ class ODriveNode(object):
     encoder_cpr = 18 #4096 # still need to take gears into account. *9?!
     wheel_cpr = 150 # Complete revolutons of the wheel
     #gear_ratio = 4.21 # 
+    steering_angle_pot = 0.0
     
     # Startup parameters
     connect_on_startup = False
@@ -218,6 +219,7 @@ class ODriveNode(object):
         self.current_l = 0
         self.current_r = 0
         
+        
 		#Dale Todo - need logic to define what the axis are - pos or vel!
         # Handle reading from Odrive and sending odometry
         if self.fast_timer_comms_active:
@@ -234,6 +236,8 @@ class ODriveNode(object):
                 # for current
                 self.current_l = self.driver.axis0.motor.current_control.Ibus
                 self.current_r = self.driver.axis1.motor.current_control.Ibus
+                
+                self.steering_angle_pot = self.driver.get_adc_pos()
                 
             except:
                 rospy.logerr("Fast timer exception reading:" + traceback.format_exc())
@@ -423,7 +427,7 @@ class ODriveNode(object):
         
         #So if swap axis then rotates by 90. Might need to *-1 the result
         steer_angle_rads = -1 * math.atan2(msg.angular.z, msg.linear.x)
-        rospy.loginfo("Steering Components: [%f, %f, %f]"%(msg.linear.x, msg.angular.z, steer_angle_rads))
+        rospy.loginfo("Steering Components: [%f, %f, %f, %f]"%(msg.linear.x, msg.angular.z, steer_angle_rads, self.steering_angle_pot))
 
 		#1200 counts = 180 degrees
 		#So 1 degree = 6.66 counts

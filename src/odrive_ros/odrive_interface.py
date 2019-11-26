@@ -287,6 +287,11 @@ class ODriveInterfaceAPI(object):
         
         if axis_error:
             return "error"
+    
+    def get_adc_pos(self):
+        if not self.driver:
+            return None
         
+        return self.driver.get_adc_voltage(5)
         
         
