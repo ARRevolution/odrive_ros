@@ -8,6 +8,7 @@ import traceback
 
 import odrive
 from odrive.enums import *
+from odrive.utils import dump_errors
 
 import fibre
 
@@ -24,34 +25,55 @@ class ODriveFailure(Exception):
     pass
 
 class ODriveInterfaceAPI(object):
-    driver = None
-    encoder_cpr = 4096
-    right_axis = None
-    left_axis = None
-    connected = False
+    encoder_cpr_a0 = 0
+    encoder_cpr_a1 = 0
     _prerolled = True #False
     #engaged = False
     
     def __init__(self, logger=None):
+        self.id = None
+        # self. engaged = False
+        self.axis0 = None
+        self.axis1 = None
+        self.connected = False
+        self._index_searched = False
+        self.driver = None
         self.logger = logger if logger else default_logger
                 
     def __del__(self):
         self.disconnect()
                     
-    def connect(self, port=None, right_axis=0, timeout=30):
+    def connect(self, port=None, timeout=30, odrive_id=None):
+        """
+        Connect by serial numbers
+
+        serial numbers:
+            207C37823548
+
+        params:
+            port
+            timeout
+            odrive_id - string id unique to each odroid
+        """
+        self.id = odrive_id
         if self.driver:
             self.logger.info("Already connected. Disconnecting and reconnecting.")
         try:
             self.driver = odrive.find_any(timeout=timeout, logger=self.logger)
+            #self.driver = odrive.find_any(serial_number=odrive_id, timeout=timeout, logger=self.logger)
             self.axes = (self.driver.axis0, self.driver.axis1)
         except:
             self.logger.error("No ODrive found. Is device powered?")
             return False
             
         # save some parameters for easy access
-        self.right_axis = self.driver.axis0 if right_axis == 0 else self.driver.axis1
-        self.left_axis  = self.driver.axis1 if right_axis == 0 else self.driver.axis0
-        self.encoder_cpr = self.driver.axis0.encoder.config.cpr
+        #self.right_axis = self.driver.axis0 if right_axis == 0 else self.driver.axis1
+        #self.left_axis  = self.driver.axis1 if right_axis == 0 else self.driver.axis0
+        self.axis0 = self.driver.axis0
+        self.axis1 = self.driver.axis1
+
+        self.encoder_cpr_a0 = self.driver.axis0.encoder.config.cpr
+        self.encoder_cpr_a0 = self.driver.axis1.encoder.config.cpr
         
         self.connected = True
         self.logger.info("Connected to ODrive. Hardware v%d.%d-%d, firmware v%d.%d.%d%s" % (
@@ -63,8 +85,8 @@ class ODriveInterfaceAPI(object):
         
     def disconnect(self):
         self.connected = False
-        self.right_axis = None
-        self.left_axis = None
+        #self.axis0 = None
+        #self.axis1 = None
         
         self._prerolled = False
         #self.engaged = False
@@ -143,12 +165,22 @@ class ODriveInterfaceAPI(object):
             self.logger.error("Not connected.")
             return False
 
+        ### Original Differential robot
         #self.logger.debug("Setting drive mode.")
-        for axis in self.axes:
-            axis.controller.vel_setpoint = 0
-            axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
-            axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+        #for axis in self.axes:
+        #    axis.controller.vel_setpoint = 0
+        #    axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+        #    axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
         
+        ### Steered Robot
+        self.axes[0].controller.pos_setpoint = 0
+        self.axes[0].requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+        self.axes[0].controller.config.control_mode = CTRL_MODE_POSITION_CONTROL 
+
+        self.axes[1].controller.vel_setpoint = 0
+        self.axes[1].requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+        self.axes[1].controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+		
         #self.engaged = True
         return True
         
@@ -163,16 +195,82 @@ class ODriveInterfaceAPI(object):
         #self.engaged = False
         return True
     
-    def drive(self, left_motor_val, right_motor_val):
+    def drive_vel(self, ax0=None, ax1=None):
+        if not self.driver:
+            self.logger.error("Vel - Not connected.")
+            return
+        elif not self.engaged():
+            self.logger.error("Vel - Not engaged")
+            return
+        try:
+            if ax0 is not None:
+                self.driver.axis0.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+                self.driver.axis0.controller.vel_setpoint = ax0
+                self.logger.info("axis0 - Vel")      
+            if ax1 is not None:
+                self.driver.axis1.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+                self.driver.axis1.controller.vel_setpoint = ax1
+                #self.logger.info("axis1 - Vel")
+        except (fibre.protocol.ChannelBrokenException, AttributeError) as e:
+           raise ODriveFailure(str(e))
+        
+    def drive_pos(self, ax0=None, ax1=None, trajectory=None):
+        if not self.driver:
+            self.logger.error("Pos - Not connected.")
+            return
+        elif not self.engaged():
+            self.logger.error("Pos - Not engaged")
+            return
+        try:
+            mode = CTRL_MODE_POSITION_CONTROL if trajectory is None else CTRL_MODE_TRAJECTORY_CONTROL
+            if ax0 is not None:
+                self.driver.axis0.controller.config.control_mode = mode
+                if trajectory:
+                    self.set_trajectory(self.driver.axis0.trap_traj.config, trajectory)
+                    self.driver.axis0.controller.move_incremental(ax0, False)
+                else:
+                    self.logger.info("Setting pos - %f" % ax0)
+                    self.driver.axis0.controller.pos_setpoint = ax0
+
+            
+            if ax1 is not None:
+                self.driver.axis1.controller.config.control_mode = mode
+                if trajectory:
+                    self.set_trajectory(self.driver.axis1.trap_traj.config, trajectory)
+                    self.driver.axis1.controller.move_incremental(ax1, False)
+                else:
+                    self.driver.axis1.controller.pos_setpoint = ax1
+        except (fibre.protocol.ChannelBrokenException, AttributeError) as e:
+           raise ODriveFailure(str(e))
+
+    def set_trajectory(self, traj_config, traj_values):
+        """
+        Trajectory control value have units related to counts
+        """
+
+        assert len(traj_values) == 4, "Trajectory values not 4 elements long"
+        traj_config.vel_limit = traj_values[0]
+        traj_config.accel_limit = traj_values[1]
+        traj_config.decel_limit = traj_values[2]
+        traj_config.A_per_css = traj_values[3]
+
+    def drive_current(self, ax0=None, ax1=None):
         if not self.driver:
             self.logger.error("Not connected.")
             return
-        #try:
-        self.left_axis.controller.vel_setpoint = left_motor_val
-        self.right_axis.controller.vel_setpoint = -right_motor_val
-        #except (fibre.protocol.ChannelBrokenException, AttributeError) as e:
-        #    raise ODriveFailure(str(e))
-        
+        elif not self.engaged():
+            self.logger.error("Not engaged")
+            return
+        try:
+            if ax0 is not None:
+                self.driver.axis0.controller.config.control_mode = CTRL_MODE_CURRENT_CONTROL
+                self.driver.axis0.controller.current_setpoint += ax0
+            if ax1 is not None:
+                self.driver.axis1.controller.config.control_mode = CTRL_MODE_CURRENT_CONTROL
+                self.driver.axis1.controller.current_setpoint += ax1
+        except (fibre.protocol.ChannelBrokenException, AttributeError) as e:
+           raise ODriveFailure(str(e))
+
     def get_errors(self, clear=True):
         # TODO: add error parsing, see: https://github.com/madcowswe/ODrive/blob/master/tools/odrive/utils.py#L34
         if not self.driver:

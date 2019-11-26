@@ -58,7 +58,7 @@ class ODriveNode(object):
 	#8 full revolutions + 6 count = 150 counts per revolution (for 18 cpr)
 	#so counts/m 150 / 1.06 = 141.509
     m_s_to_value = 141.509 #4.65 
-    axis_for_right = 0
+    axis_for_right = 0   #follow this and edit to put in differential vs steered wheels
     encoder_cpr = 18 #4096 # still need to take gears into account. *9?!
     wheel_cpr = 150 # Complete revolutons of the wheel
     #gear_ratio = 4.21 # 
@@ -218,21 +218,22 @@ class ODriveNode(object):
         self.current_l = 0
         self.current_r = 0
         
+		#Dale Todo - need logic to define what the axis are - pos or vel!
         # Handle reading from Odrive and sending odometry
         if self.fast_timer_comms_active:
             try:
                 # read all required values from ODrive for odometry
-                self.encoder_cpr = self.driver.encoder_cpr
+                self.encoder_cpr = self.driver.encoder_cpr_a0
                 #self.m_s_to_value = self.encoder_cpr/self.tyre_circumference # calculated - Dale removed
                 
-                self.vel_l = self.driver.left_axis.encoder.vel_estimate  # units: encoder counts/s
-                self.vel_r = -self.driver.right_axis.encoder.vel_estimate # neg is forward for right
-                self.new_pos_l = self.driver.left_axis.encoder.pos_cpr    # units: encoder counts
-                self.new_pos_r = -self.driver.right_axis.encoder.pos_cpr  # sign!
+                self.vel_l = self.driver.axis0.encoder.vel_estimate  # units: encoder counts/s
+                self.vel_r = -self.driver.axis1.encoder.vel_estimate # neg is forward for right
+                self.new_pos_l = self.driver.axis0.encoder.pos_cpr    # units: encoder counts
+                self.new_pos_r = -self.driver.axis1.encoder.pos_cpr  # sign!
                 
                 # for current
-                self.current_l = self.driver.left_axis.motor.current_control.Ibus
-                self.current_r = self.driver.right_axis.motor.current_control.Ibus
+                self.current_l = self.driver.axis0.motor.current_control.Ibus
+                self.current_r = self.driver.axis1.motor.current_control.Ibus
                 
             except:
                 rospy.logerr("Fast timer exception reading:" + traceback.format_exc())
@@ -252,7 +253,7 @@ class ODriveNode(object):
                     self.driver.engaged(): #(self.last_speed > 0):
                 #rospy.logdebug("No /cmd_vel received in > 1s, stopping.")
             
-                self.driver.drive(0,0)
+                self.driver.drive_vel(0,0)
                 self.last_speed = 0
                 self.last_cmd_vel_time = time_now
                 self.driver.release() # and release
@@ -282,10 +283,19 @@ class ODriveNode(object):
                 try:
                     if not self.driver.engaged():
                         self.driver.engage()
-                        
-                    left_linear_val, right_linear_val = motor_command[1]
-                    self.driver.drive(left_linear_val, right_linear_val)
-                    self.last_speed = max(abs(left_linear_val), abs(right_linear_val))
+                        			
+		            ### Original Differential robot
+                    #left_linear_val, right_linear_val = motor_command[1]
+                    #self.driver.drive_vel(left_linear_val, right_linear_val*-1)
+                    #self.last_speed = max(abs(left_linear_val), abs(right_linear_val))
+					
+					### Steered Robot
+                    wheel_linear_val = motor_command[1]
+                    steer_angular_val = motor_command[2]
+                    self.driver.drive_vel(None, wheel_linear_val)
+                    self.last_speed = abs(wheel_linear_val)
+                    self.driver.drive_pos(steer_angular_val)
+										
                     self.last_cmd_vel_time = time_now
                 except:
                     rospy.logerr("Fast timer exception on drive cmd:" + traceback.format_exc())
@@ -309,7 +319,7 @@ class ODriveNode(object):
         
         self.driver = ODriveInterfaceAPI(logger=ROSLogger())
         rospy.loginfo("Connecting to ODrive...")
-        if not self.driver.connect(right_axis=self.axis_for_right):
+        if not self.driver.connect(odrive_id=336431503536):
             self.driver = None
             #rospy.logerr("Failed to connect.")
             return (False, "Failed to connect.")
@@ -320,8 +330,8 @@ class ODriveNode(object):
         #self.m_s_to_value = self.driver.encoder_cpr/self.tyre_circumference - - Dale removed
         
         if self.publish_odom:
-            self.old_pos_l = self.driver.left_axis.encoder.pos_cpr
-            self.old_pos_r = self.driver.right_axis.encoder.pos_cpr
+            self.old_pos_l = self.driver.axis0.encoder.pos_cpr
+            self.old_pos_r = self.driver.axis1.encoder.pos_cpr
         
         self.fast_timer_comms_active = True
         
@@ -397,15 +407,31 @@ class ODriveNode(object):
         # Use the kinematics of your robot to map linear and angular velocities into motor commands
         
         # 3600 ERPM = 360 RPM ~= 6 km/hr
-        
-        #angular_to_linear = msg.angular.z * (wheel_track/2.0) 
-        #left_linear_rpm  = (msg.linear.x - angular_to_linear) * m_s_to_erpm
-        #right_linear_rpm = (msg.linear.x + angular_to_linear) * m_s_to_erpm
-        left_linear_val, right_linear_val = self.convert(msg.linear.x, msg.angular.z)
+
+		### Original Differential robot
+        #left_linear_val, right_linear_val = self.convert(msg.linear.x, msg.angular.z)
 		
-        #rospy.loginfo("m_s_to_value = " + str(self.m_s_to_value))
+		#rospy.loginfo("m_s_to_value = " + str(self.m_s_to_value))
         #rospy.loginfo("left_linear_val = " + str(left_linear_val))
         #rospy.loginfo("right_linear_val = " + str(right_linear_val))
+		
+		### Steered Robot
+        wheel_linear_val = msg.linear.x * self.m_s_to_value
+
+        #below puts 0 rads as left. want it as verticle
+        #steer_angle_rads = math.atan2(msg.linear.x, msg.angular.z)
+        
+        #So if swap axis then rotates by 90. Might need to *-1 the result
+        steer_angle_rads = -1 * math.atan2(msg.angular.z, msg.linear.x)
+        rospy.loginfo("Steering Components: [%f, %f, %f]"%(msg.linear.x, msg.angular.z, steer_angle_rads))
+
+		#1200 counts = 180 degrees
+		#So 1 degree = 6.66 counts
+		#1 radian = 57.2958 degrees = 381.972 counts
+        steer_angular_val = steer_angle_rads * 381.972
+		
+        #rospy.loginfo("wheel_linear_val = " + str(wheel_linear_val))
+        #rospy.loginfo("steer_angular_val = " + str(steer_angular_val))
 		
         # if wheel speed = 0, stop publishing after sending 0 once. #TODO add error term, work out why VESC turns on for 0 rpm
         
@@ -417,7 +443,12 @@ class ODriveNode(object):
         
         #rospy.logdebug("Driving left: %d, right: %d, from linear.x %.2f and angular.z %.2f" % (left_linear_val, right_linear_val, msg.linear.x, msg.angular.z))
         try:
-            drive_command = ('drive', (left_linear_val, right_linear_val))
+            # Original Differential robot
+            #drive_command = ('drive', (left_linear_val, right_linear_val))
+			
+			#Steered Robot
+            drive_command = ('drive', wheel_linear_val, steer_angular_val)
+
             self.command_queue.put_nowait(drive_command)
         except Queue.Full:
             pass
@@ -457,7 +488,7 @@ class ODriveNode(object):
         #rospy.loginfo("vel_l: % 2.2f  vel_r: % 2.2f  vel_l: % 2.2f  vel_r: % 2.2f  x: % 2.2f  th: % 2.2f  pos_l: % 5.1f pos_r: % 5.1f " % (
         #                vel_l, -vel_r,
         #                vel_l/encoder_cpr, vel_r/encoder_cpr, self.odom_msg.twist.twist.linear.x, self.odom_msg.twist.twist.angular.z,
-        #                self.driver.left_axis.encoder.pos_cpr, self.driver.right_axis.encoder.pos_cpr))
+        #                self.driver.axis0.encoder.pos_cpr, self.driver.axis1.encoder.pos_cpr))
         
         # Position
         delta_pos_l = self.new_pos_l - self.old_pos_l
