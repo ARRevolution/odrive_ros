@@ -10,10 +10,23 @@
     
     <arg name="output"   default="screen"/>
     <arg name="respawn"   default="false"/>
+	
+	<arg name="od_id_arrw1"         default="3366314D3536"/>
+	<arg name="od_id_arrw2"         default="336431503536"/>
+	<arg name="od_id_arrw3"         default="0"/>
+	<arg name="od_id_arrw4"         default="0"/>
+	
+	<arg name="pot_zero_arrw1"         default="3366314D3536"/>
+	<arg name="pot_zero_arrw2"         default="1.62583"/>
+	<arg name="pot_zero_arrw3"         default="0"/>
+	<arg name="pot_zero_arrw4"         default="0"/>
     
-    <node pkg="odrive_ros" type="odrive_node" name="odrive" ns="odrive" 
+    <node pkg="odrive_ros" type="odrive_node" name="odrive_arrw2" ns="odrive" 
             output="$(arg output)" respawn="$(arg respawn)">
-        <param name="wheel_track" value="1.05"/>
+			
+		<param name="od_id"    type="str"     value="$(arg od_id_arrw2)"/>	
+		<param name="pot_zero"  type="double"    value="$(arg pot_zero_arrw2)"/>
+        <param name="wheel_track"   value="1.05"/>
         <param name="tyre_circumference" value="1.06"/>
         
         <param name="connect_on_startup"   value="$(arg connect_on_startup)"/>
@@ -25,4 +38,5 @@
         <param name="publish_tf"      value="$(arg publish_tf)"/>
 		
     </node>
-</launch>
+</launch>      
+        

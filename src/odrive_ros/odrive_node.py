@@ -58,13 +58,12 @@ class ODriveNode(object):
 	#8 full revolutions + 6 count = 150 counts per revolution (for 18 cpr)
 	#so counts/m 150 / 1.06 = 141.509
     m_s_to_value = 141.509 #4.65 
-    axis_for_right = 0   #follow this and edit to put in differential vs steered wheels
     encoder_cpr = 18 #4096 # still need to take gears into account. *9?!
     wheel_cpr = 150 # Complete revolutons of the wheel
     #gear_ratio = 4.21 # 
     steering_angle_pot = 0.0
     steering_pot_valid = False
-    zero_pot_value = 1.62583
+    #zero_pot_value = 1.62583
     pot_volts_per_count = 0.00145382
     steering_zero_offset = 0
     steering_limit_lower = -1000
@@ -74,17 +73,22 @@ class ODriveNode(object):
     connect_on_startup = False
     calibrate_on_startup = False
     engage_on_startup = False
+    
+    fast_timer_comms_active = False
+    checked_zero_pos = False
 
     
     def __init__(self):
-        self.axis_for_right = float(rospy.get_param('~axis_for_right', 0)) # if right calibrates first, this should be 0, else 1
         self.wheel_track = float(rospy.get_param('~wheel_track', 1.05)) # m, distance between wheel centres
         self.tyre_circumference = float(rospy.get_param('~tyre_circumference', 1.06)) # used to translate velocity commands in m/s into motor rpm
         
         self.connect_on_startup   = rospy.get_param('~connect_on_startup', False)
         #self.calibrate_on_startup = rospy.get_param('~calibrate_on_startup', False)
         #self.engage_on_startup    = rospy.get_param('~engage_on_startup', False)
-        #self.od_id                = rospy.get_param('~od_id', None)
+        self.od_id                = rospy.get_param('~od_id', None)
+        self.pot_zero             = rospy.get_param('~pot_zero', None)
+        #self.pot_zero  = 1.62583
+        rospy.loginfo("Zero = %f" % self.pot_zero)
         
         self.has_preroll     = rospy.get_param('~use_preroll', False) # True
                 
@@ -177,8 +181,8 @@ class ODriveNode(object):
         # Start timer to run high-rate comms
         self.fast_timer = rospy.Timer(rospy.Duration(1/float(self.odom_calc_hz)), self.fast_timer)
         
-        self.fast_timer_comms_active = False
-        self.checked_zero_pos = False
+        #self.fast_timer_comms_active = False
+        #self.checked_zero_pos = False
         
         while not rospy.is_shutdown():
             try:
@@ -338,7 +342,7 @@ class ODriveNode(object):
         
         self.driver = ODriveInterfaceAPI(logger=ROSLogger())
         rospy.loginfo("Connecting to ODrive...")
-        if not self.driver.connect(odrive_id="336431503536"):
+        if not self.driver.connect(odrive_id=self.od_id): #"336431503536"
             self.driver = None
             #rospy.logerr("Failed to connect.")
             return (False, "Failed to connect.")
@@ -442,8 +446,8 @@ class ODriveNode(object):
         #Zero position checking - bug here if drive is not at its counter 0 position at boot. Read that here!!!
         if self.fast_timer_comms_active and not self.checked_zero_pos and self.steering_pot_valid:
             rospy.loginfo("Checking Steering Zero Position")
-            self.steering_zero_offset = ((self.steering_angle_pot - self.zero_pot_value) / self.pot_volts_per_count) * -1
-                 
+            self.steering_zero_offset = ((self.steering_angle_pot - self.pot_zero) / self.pot_volts_per_count) * -1 #self.zero_pot_value
+                             
             shad_count = self.driver.axis0.encoder.shadow_count
             pos_point = self.driver.axis0.controller.pos_setpoint
             #rospy.loginfo("shadow = %d, position = %f" %(shad_count, pos_point))
