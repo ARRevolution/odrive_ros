@@ -55,20 +55,19 @@ class ODriveInterfaceAPI(object):
             timeout
             odrive_id - string id unique to each odroid
         """
+        self.logger.info("Find ID = 0x" + odrive_id)
         self.id = odrive_id
         if self.driver:
             self.logger.info("Already connected. Disconnecting and reconnecting.")
         try:
-            self.driver = odrive.find_any(timeout=timeout, logger=self.logger)
-            #self.driver = odrive.find_any(serial_number=odrive_id, timeout=timeout, logger=self.logger)
+            #self.driver = odrive.find_any(timeout=timeout, logger=self.logger)
+            self.driver = odrive.find_any(serial_number=odrive_id, timeout=timeout, logger=self.logger)
             self.axes = (self.driver.axis0, self.driver.axis1)
         except:
             self.logger.error("No ODrive found. Is device powered?")
             return False
             
         # save some parameters for easy access
-        #self.right_axis = self.driver.axis0 if right_axis == 0 else self.driver.axis1
-        #self.left_axis  = self.driver.axis1 if right_axis == 0 else self.driver.axis0
         self.axis0 = self.driver.axis0
         self.axis1 = self.driver.axis1
 
@@ -76,7 +75,8 @@ class ODriveInterfaceAPI(object):
         self.encoder_cpr_a0 = self.driver.axis1.encoder.config.cpr
         
         self.connected = True
-        self.logger.info("Connected to ODrive. Hardware v%d.%d-%d, firmware v%d.%d.%d%s" % (
+        self.logger.info("Connected to ODrive. SN 0x%x, Hardware v%d.%d-%d, firmware v%d.%d.%d%s" % (
+                        self.driver.serial_number,
                         self.driver.hw_version_major, self.driver.hw_version_minor, self.driver.hw_version_variant,
                         self.driver.fw_version_major, self.driver.fw_version_minor, self.driver.fw_version_revision,
                         "-dev" if self.driver.fw_version_unreleased else ""
@@ -85,8 +85,8 @@ class ODriveInterfaceAPI(object):
         
     def disconnect(self):
         self.connected = False
-        #self.axis0 = None
-        #self.axis1 = None
+        self.axis0 = None
+        self.axis1 = None
         
         self._prerolled = False
         #self.engaged = False
@@ -229,10 +229,9 @@ class ODriveInterfaceAPI(object):
                     self.set_trajectory(self.driver.axis0.trap_traj.config, trajectory)
                     self.driver.axis0.controller.move_incremental(ax0, False)
                 else:
-                    self.logger.info("Setting pos - %f" % ax0)
+                    #self.logger.info("Setting pos - %f" % ax0)
                     self.driver.axis0.controller.pos_setpoint = ax0
 
-            
             if ax1 is not None:
                 self.driver.axis1.controller.config.control_mode = mode
                 if trajectory:

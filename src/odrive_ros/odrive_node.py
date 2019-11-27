@@ -63,6 +63,12 @@ class ODriveNode(object):
     wheel_cpr = 150 # Complete revolutons of the wheel
     #gear_ratio = 4.21 # 
     steering_angle_pot = 0.0
+    steering_pot_valid = False
+    zero_pot_value = 1.62583
+    pot_volts_per_count = 0.00145382
+    steering_zero_offset = 0
+    steering_limit_lower = -1000
+    steering_limit_upper = 1000
     
     # Startup parameters
     connect_on_startup = False
@@ -78,6 +84,7 @@ class ODriveNode(object):
         self.connect_on_startup   = rospy.get_param('~connect_on_startup', False)
         #self.calibrate_on_startup = rospy.get_param('~calibrate_on_startup', False)
         #self.engage_on_startup    = rospy.get_param('~engage_on_startup', False)
+        #self.od_id                = rospy.get_param('~od_id', None)
         
         self.has_preroll     = rospy.get_param('~use_preroll', False) # True
                 
@@ -171,6 +178,7 @@ class ODriveNode(object):
         self.fast_timer = rospy.Timer(rospy.Duration(1/float(self.odom_calc_hz)), self.fast_timer)
         
         self.fast_timer_comms_active = False
+        self.checked_zero_pos = False
         
         while not rospy.is_shutdown():
             try:
@@ -238,10 +246,13 @@ class ODriveNode(object):
                 self.current_r = self.driver.axis1.motor.current_control.Ibus
                 
                 self.steering_angle_pot = self.driver.get_adc_pos()
+                self.steering_pot_valid = True
+                #rospy.loginfo("Read steering_angle_pot = %f" % self.steering_angle_pot)
                 
             except:
                 rospy.logerr("Fast timer exception reading:" + traceback.format_exc())
                 self.fast_timer_comms_active = False
+                self.checked_zero_pos = False
                 
         # odometry is published regardless of ODrive connection or failure (but assumed zero for those)
         # as required by SLAM
@@ -267,12 +278,15 @@ class ODriveNode(object):
         
         # handle sending drive commands.
         # from here, any errors return to get out
-        if self.fast_timer_comms_active and not self.command_queue.empty():
+        if self.fast_timer_comms_active and not self.command_queue.empty() and self.checked_zero_pos:
             # check to see if we're initialised and engaged motor
             try:
                 if not self.driver.prerolled():
                     self.driver.preroll()
                     return
+                #if not self.checked_zero_pos:
+                #    rospy.loginfo("Forced return")
+                #    return
             except:
                 rospy.logerr("Fast timer exception on preroll:" + traceback.format_exc())
                 self.fast_timer_comms_active = False                
@@ -292,7 +306,8 @@ class ODriveNode(object):
                     #left_linear_val, right_linear_val = motor_command[1]
                     #self.driver.drive_vel(left_linear_val, right_linear_val*-1)
                     #self.last_speed = max(abs(left_linear_val), abs(right_linear_val))
-					
+                    #rospy.loginfo("!!Send steer command")
+                    
 					### Steered Robot
                     wheel_linear_val = motor_command[1]
                     steer_angular_val = motor_command[2]
@@ -323,7 +338,7 @@ class ODriveNode(object):
         
         self.driver = ODriveInterfaceAPI(logger=ROSLogger())
         rospy.loginfo("Connecting to ODrive...")
-        if not self.driver.connect(odrive_id=336431503536):
+        if not self.driver.connect(odrive_id="336431503536"):
             self.driver = None
             #rospy.logerr("Failed to connect.")
             return (False, "Failed to connect.")
@@ -333,6 +348,8 @@ class ODriveNode(object):
         # okay, connected, 
         #self.m_s_to_value = self.driver.encoder_cpr/self.tyre_circumference - - Dale removed
         
+        #self.driver.axis0.encoder.shadow_count -- is actual position - 1. So on powerup it is -1
+        #pos_cpr is just position within one rotation. So not work for you with geared motor
         if self.publish_odom:
             self.old_pos_l = self.driver.axis0.encoder.pos_cpr
             self.old_pos_r = self.driver.axis1.encoder.pos_cpr
@@ -422,18 +439,49 @@ class ODriveNode(object):
 		### Steered Robot
         wheel_linear_val = msg.linear.x * self.m_s_to_value
 
+        #Zero position checking - bug here if drive is not at its counter 0 position at boot. Read that here!!!
+        if self.fast_timer_comms_active and not self.checked_zero_pos and self.steering_pot_valid:
+            rospy.loginfo("Checking Steering Zero Position")
+            self.steering_zero_offset = ((self.steering_angle_pot - self.zero_pot_value) / self.pot_volts_per_count) * -1
+                 
+            shad_count = self.driver.axis0.encoder.shadow_count
+            pos_point = self.driver.axis0.controller.pos_setpoint
+            #rospy.loginfo("shadow = %d, position = %f" %(shad_count, pos_point))
+            
+            #Check if it has already been corrected this powercycle
+            if shad_count != -1 and shad_count != 0 and pos_point != 0.0: # Fool proof? Any other possibilty when can both be these values?
+                    self.steering_zero_offset = self.steering_zero_offset + shad_count
+                    rospy.loginfo("Already corrected this powercycle - adjusted by %d" % shad_count)
+            
+            self.steering_limit_lower = self.steering_limit_lower + self.steering_zero_offset
+            self.steering_limit_upper = self.steering_limit_upper + self.steering_zero_offset
+            rospy.loginfo("Zero offset adjusted by [%f, %f, %f, %f]"%(self.steering_zero_offset, self.steering_angle_pot, self.steering_limit_lower, self.steering_limit_upper))
+            self.checked_zero_pos = True
+            
         #below puts 0 rads as left. want it as verticle
         #steer_angle_rads = math.atan2(msg.linear.x, msg.angular.z)
         
-        #So if swap axis and *-1 then rotates by 90. Added 0.000001 so that 0,0 is 0 degrees instead of 180.
-        steer_angle_rads = -1 * math.atan2(msg.angular.z, msg.linear.x + 0.000001)
-        rospy.loginfo("Steering Components: [%f, %f, %f, %f]"%(msg.linear.x, msg.angular.z, steer_angle_rads, self.steering_angle_pot))
-
+        # Added absolute check so that 0,0 on joystick is forced to 0 degrees instead of calculated to 180.
+        if abs(msg.angular.z) > 0.00001 or abs(msg.linear.x) > 0.00001:
+            #So if swap axis and *-1 then rotates by 90.
+            steer_angle_rads = -1 * math.atan2(msg.angular.z, msg.linear.x) # + 0.000001
+            #rospy.loginfo("Steering Components: [%f, %f, %f, %f]"%(msg.linear.x, msg.angular.z, steer_angle_rads, self.steering_angle_pot))
+        else:
+            steer_angle_rads = 0
+            #rospy.loginfo("Steering = 0")        
+        
 		#1200 counts = 180 degrees
 		#So 1 degree = 6.66 counts
 		#1 radian = 57.2958 degrees = 381.972 counts
-        steer_angular_val = steer_angle_rads * 381.972
-		
+        steer_angular_val = (steer_angle_rads * 381.972) + self.steering_zero_offset
+        
+        #Physical limits to protect hub motor cable
+        if steer_angular_val > self.steering_limit_upper:
+            steer_angular_val = self.steering_limit_upper
+        elif steer_angular_val < self.steering_limit_lower:
+            steer_angular_val = self.steering_limit_lower 
+            
+        #rospy.loginfo("Steering Components: [%f, %f, %f]"%(steer_angle_rads, self.steering_angle_pot, self.steering_zero_offset))
         #rospy.loginfo("wheel_linear_val = " + str(wheel_linear_val))
         #rospy.loginfo("steer_angular_val = " + str(steer_angular_val))
 		
@@ -446,16 +494,17 @@ class ODriveNode(object):
         #wheel_right.set_speed(v_r)
         
         #rospy.logdebug("Driving left: %d, right: %d, from linear.x %.2f and angular.z %.2f" % (left_linear_val, right_linear_val, msg.linear.x, msg.angular.z))
-        try:
-            # Original Differential robot
-            #drive_command = ('drive', (left_linear_val, right_linear_val))
-			
-			#Steered Robot
-            drive_command = ('drive', wheel_linear_val, steer_angular_val)
+        if self.checked_zero_pos:
+            try:
+                # Original Differential robot
+                #drive_command = ('drive', (left_linear_val, right_linear_val))
+                
+                #Steered Robot
+                drive_command = ('drive', wheel_linear_val, steer_angular_val)
 
-            self.command_queue.put_nowait(drive_command)
-        except Queue.Full:
-            pass
+                self.command_queue.put_nowait(drive_command)
+            except Queue.Full:
+                pass
             
         self.last_cmd_vel_time = rospy.Time.now()
                 
