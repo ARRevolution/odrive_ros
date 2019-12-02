@@ -13,13 +13,19 @@
 	
 	<arg name="od_id_arrw1"         default="3366314D3536"/>
 	<arg name="od_id_arrw2"         default="336431503536"/>
-	<arg name="od_id_arrw3"         default="0"/>
-	<arg name="od_id_arrw4"         default="0"/>
+	<arg name="od_id_arrw3"         default="3368315A3536"/>
+	<arg name="od_id_arrw4"         default="386537563437"/>
 	
 	<arg name="pot_zero_arrw1"         default="1.80549"/>
-	<arg name="pot_zero_arrw2"         default="1.62583"/>
-	<arg name="pot_zero_arrw3"         default="0"/>
-	<arg name="pot_zero_arrw4"         default="0"/>
+	<arg name="pot_zero_arrw2"         default="1.66531"/>
+	<arg name="pot_zero_arrw3"         default="1.59440"/>
+	<arg name="pot_zero_arrw4"         default="1.51787"/>
+	
+	<!-- Not required unless swap to non syemtrical limits -->
+	<arg name="hub_wire_left_arrw1"         default="true"/>
+	<arg name="hub_wire_left_arrw2"         default="false"/>
+	<arg name="hub_wire_left_arrw3"         default="true"/>
+	<arg name="hub_wire_left_arrw4"         default="false"/>
     
     <node pkg="odrive_ros" type="odrive_node" name="odrive_arrw1" ns="odrive" 
             output="$(arg output)" respawn="$(arg respawn)">
@@ -54,6 +60,40 @@
         <param name="publish_odom"    value="$(arg publish_odom)"/>
         <param name="publish_tf"      value="$(arg publish_tf)"/>
     </node>
+	
+    <node pkg="odrive_ros" type="odrive_node" name="odrive_arrw3" ns="odrive" 
+            output="$(arg output)" respawn="$(arg respawn)">
+			
+		<param name="od_id"    type="str"     value="$(arg od_id_arrw3)"/>	
+		<param name="pot_zero"  type="double"    value="$(arg pot_zero_arrw3)"/>
+        <param name="wheel_track"   value="1.05"/>
+        <param name="tyre_circumference" value="1.06"/>
+        
+        <param name="connect_on_startup"   value="$(arg connect_on_startup)"/>
+        <param name="calibrate_on_startup" value="$(arg calibrate_on_startup)"/>
+        <param name="engage_on_startup"    value="$(arg engage_on_startup)"/>
+		<param name="use_preroll"    value="$(arg use_preroll)"/>
+        
+        <param name="publish_odom"    value="$(arg publish_odom)"/>
+        <param name="publish_tf"      value="$(arg publish_tf)"/>
+    </node>
+
+    <node pkg="odrive_ros" type="odrive_node" name="odrive_arrw4" ns="odrive" 
+            output="$(arg output)" respawn="$(arg respawn)">
+			
+		<param name="od_id"    type="str"     value="$(arg od_id_arrw4)"/>	
+		<param name="pot_zero"  type="double"    value="$(arg pot_zero_arrw4)"/>
+        <param name="wheel_track"   value="1.05"/>
+        <param name="tyre_circumference" value="1.06"/>
+        
+        <param name="connect_on_startup"   value="$(arg connect_on_startup)"/>
+        <param name="calibrate_on_startup" value="$(arg calibrate_on_startup)"/>
+        <param name="engage_on_startup"    value="$(arg engage_on_startup)"/>
+		<param name="use_preroll"    value="$(arg use_preroll)"/>
+        
+        <param name="publish_odom"    value="$(arg publish_odom)"/>
+        <param name="publish_tf"      value="$(arg publish_tf)"/>
+    </node>	
 	
 </launch>      
         

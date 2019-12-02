@@ -1,3 +1,6 @@
+Starting point for this was Neomanic's odrive node with some parts added from https://github.com/williammlu/odrive_ros
+Thank you both!!
+
 # odrive_ros
 ROS driver for the [ODrive motor driver](https://odriverobotics.com/)
 
